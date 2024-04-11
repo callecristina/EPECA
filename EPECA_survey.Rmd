@@ -1,0 +1,146 @@
+---
+title: "EPECA survey"
+author: "Cristina Calle"
+date: "2023-12-04"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Cargar las librerias
+
+```{r include=FALSE}
+library(tidyverse)
+library(haven)  # Lectura de datos
+library(sjmisc) # Utilidades para encuestas con etiquetas
+library(sjPlot) # Gráficos y tablas "bonitos" con etiquetas
+library(broom)  # Convierte en tibbles los resultados de modelos
+library(survey) # Análisis de encuestas complejas
+library(srvyr) # Funciones survey a la tidyverse
+library(knitr) # Tablas con kable
+library(sandwich)
+library(lmtest) # Varianzas-covarianzas
+library(car)    # Inferencia de modelos
+library (dplyr)
+```
+
+Abrir las bases de datos
+
+```{r echo=TRUE}
+HOG <- read_sav("C:/Users/yheli/OneDrive - Universidad de Antioquia/BDEPECA/FINAL SPSS/hogaresFinal v.3.sav")
+IND <- read_sav("C:/Users/yheli/OneDrive - Universidad de Antioquia/BDEPECA/FINAL SPSS/individuosFinal v.3.sav")
+```
+
+Frecuencias
+
+```{r}
+#frecuencia de hogares por clase
+HOG%>%frq(q_2)
+#frecuencia de los hogares por 
+#se crea la variable Modulo de tiempo (MDT)
+IND$MDT<-IND$Actividad1+IND$Actividad2+IND$Actividad5+IND$Actividad6+IND$Actividad7+IND$Actividad8+IND$Actividad9+IND$Actividad31+IND$Actividad32+IND$Actividad33+IND$Actividad34+IND$Actividad35+IND$Actividad36+IND$Actividad37+IND$Actividad41+IND$Actividad42+IND$Actividad43+IND$Actividad44
+#frecuencias de individuos según modulo de tiempo
+IND%>%frq(MDT)
+```
+```{r}
+IND %>% frq(q_50,weights=ExpPoblacional,sort.frq="desc") %>% kable()#titulos
+```
+
+
+***REGRESIONES***
+
+HOGARES
+
+Selección de datos y especificación del diseño de la encuesta.
+
+Definir el diseño de la encuesta
+
+```{r}
+# hay que especificar las variables de estratos, conglomerados y pesos
+#crear una variable para el estrato q_9 remplazando los valores perdidos
+HOG$q_6[is.na(HOG$q_6)]<-0
+#crear tres objetos distintos: el que contiene el diseño correcto (disc), el que sólo utiliza pesos pero no diseño complejo (disw), y, por último, el que trata los datos como si fuesen un muestro aleatorio, sin utilizar pesos (disram).
+#diseño correcto
+disc<-svydesign(ids=~keyhogar, strata=~q_6, weights=~ExpPoblacional, data=HOG, nest=TRUE)
+#solo pesos
+disw=svydesign(ids=~keyhogar,strata=NULL,weights=~ExpPoblacional, data=HOG)
+#diseño sin pesos
+disram=svydesign(ids=~keyhogar,strata=NULL,weights=NULL,data=HOG)
+```
+Calculo de los errores estandar
+```{r}
+SE_disc<-svyciprop(~STDCNR, disc)%>%SE()
+SE_disw<-svyciprop(~STDCNR, disw)%>%SE()
+SE_disram<-svyciprop(~STDCNR, disram)%>%SE()
+```
+```{r}
+#medias
+media<-svymean(~STDCNR,disc,deff="replace")
+media
+#con los diferentes diseños
+svymean(~STDCNR,disw, deff="replace")
+svymean(~STDCNR,disram,deff="replace")
+confint(media, level=0.9)
+#forma alternativa complicada
+lm1<-lm(STDCNR~1, weights=ExpPoblacional, data=HOG)
+coeftest(lm1,vcov. = vcovHC)
+#para una proporcióm
+lm1<-lm(I(TDCNR==1)~1, weights=ExpPoblacional, data=HOG)
+coeftest(lm1,vcov = vcovHC)
+```
+
+```{r}
+#si se tiene en cuenta los conglomerados
+coeftest(lm1,vcov = vcovCL, cluster=HOG$q_3)
+#prueba chi-square para una tabla
+summary (xtabs(HOG$ExpPoblacional~HOG$TDCNR+HOG$q_10), static="Chisq")
+```
+```{r}
+#la misma tabla pero mas bonita
+with(HOG,sjPlot::tab_xtab(TDCNR,q_10,weight=ExpPoblacional))
+```
+
+```{r}
+#tabla cruzada como tibble
+svyby(~TDCNR,~q_10,disc,svymean) %>% as_tibble() %>% 
+  mutate(q_10=as_factor(q_10))
+#los intervalos de confianza
+svyby(~TDCNR,~q_10,disc,svymean) %>% confint()
+```
+```{r}
+#intervalos de confianza con mas variables
+svyby(~TDCNR,~q_10+q_28,disc,svymean,vartype="ci") %>% as_tibble()
+```
+Modelo lineal generalizado
+```{r}
+#modelo
+#crear la variable tiempo TDCNR por hogar
+#crear la variable tiempo TDCNR por individuo
+IND$TIND<-IND$Actividad5+IND$Actividad31+IND$Actividad32+IND$Actividad33+IND$Actividad34+IND$Actividad35+IND$Actividad36+IND$Actividad37+IND$Actividad41+IND$Actividad42+IND$Actividad43+IND$Actividad44
+summary(IND$TIND)
+#sumar por hogar
+TEMP<-IND%>%group_by(keyhogar)%>%summarise(THOG=sum(TIND))
+HOG<-HOG%>%left_join(TEMP, by="keyhogar")#la diferencia con merge es el orden
+#Las horas total por individuo y la horas total por hogar no coinciden con las que calculo el profesor revisar
+summary(HOG$THOG)
+```
+```{r}
+#PREPAR LAS VARIABALES DEPENCIENTES
+#Cantidad de servicios públicos
+#Se recodifican los sevricios en 1 y ceros
+summary(HOG$q_11)
+HOG$q_11[HOG$q_11==2]<-0
+summary(HOG$q_11)
+HOG$q_14[HOG$q_14==2]<-0
+HOG$q_15[HOG$q_15==2]<-0
+HOG$q_16[HOG$q_16==2]<-0
+HOG$q_18[HOG$q_18==2]<-1
+HOG$q_18[HOG$q_18==3]<-0
+HOG$q_20[HOG$q_20==2]<-0
+HOG$SPV<-HOG$q_14+HOG$q_15+HOG$q_16+HOG$q_18+HOG$q_20
+summary(HOG$SPV)
+
+```
+

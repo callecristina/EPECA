@@ -1,0 +1,383 @@
+---
+title: "Regresiones EPECA"
+author: "Cristina Calle"
+date: "2023-12-14"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r include=FALSE}
+library(tidyverse)
+library(haven)  # Lectura de datos
+library(sjmisc) # Utilidades para encuestas con etiquetas
+library(sjPlot) # Gráficos y tablas "bonitos" con etiquetas
+library(broom)  # Convierte en tibbles los resultados de modelos
+library(survey) # Análisis de encuestas complejas
+library(srvyr) # Funciones survey a la tidyverse
+library(knitr) # Tablas con kable
+library(sandwich)
+library(lmtest) # Varianzas-covarianzas
+library(car)    # Inferencia de modelos
+library (dplyr)
+```
+
+Abrir las bases de datos
+
+```{r include=FALSE}
+HOG <- read_sav("C:/Users/yheli/OneDrive - Universidad de Antioquia/BDEPECA/FINAL SPSS/hogaresFinal v.3.sav")
+IND <- read_sav("C:/Users/yheli/OneDrive - Universidad de Antioquia/BDEPECA/FINAL SPSS/individuosFinal v.3.sav")
+```
+
+```{r}
+#crear la variable tiempo TDCNR por hogar
+#crear la variable tiempo TDCNR por individuo
+IND$TIND<-IND$Actividad5+IND$Actividad31+IND$Actividad32+IND$Actividad33+IND$Actividad34+IND$Actividad35+IND$Actividad36+IND$Actividad37+IND$Actividad41+IND$Actividad42+IND$Actividad43+IND$Actividad44
+summary(IND$TIND)
+#sumar por hogar
+TEMP<-IND%>%group_by(keyhogar)%>%summarise(THOG=sum(TIND))
+HOG<-HOG%>%left_join(TEMP, by="keyhogar")#la diferencia con merge es el orden
+#Las horas total por individuo y la horas total por hogar no coinciden con las que calculo el profesor revisar
+summary(HOG$THOG)
+```
+```{r}
+#PREPAR LAS VARIABALES DEPENDIENTES
+#Cantidad de servicios públicos
+#Se recodifican los sevricios en 1 y 0
+HOG$q_11[HOG$q_11==2]<-0
+HOG$q_14[HOG$q_14==2]<-0
+HOG$q_15[HOG$q_15==2]<-0
+HOG$q_16[HOG$q_16==2]<-0
+HOG$q_18[HOG$q_18==2]<-1
+HOG$q_18[HOG$q_18==3]<-0
+HOG$q_20[HOG$q_20==2]<-0
+HOG$SPV<-HOG$q_14+HOG$q_15+HOG$q_16+HOG$q_18+HOG$q_20
+summary(HOG$SPV)
+```
+
+```{r}
+#cantidad de bienes durables en el hogar
+#se recodifican las variables en 1 y 0
+HOG$q_29[HOG$q_29==2]<-0
+HOG$q_30[HOG$q_30==2]<-0
+HOG$q_31[HOG$q_31==2]<-0
+HOG$q_32[HOG$q_32==2]<-0
+HOG$q_33[HOG$q_33==2]<-0
+HOG$q_34[HOG$q_34==2]<-0
+HOG$q_35[HOG$q_35==2]<-0
+HOG$q_36[HOG$q_36==2]<-0
+HOG$q_37[HOG$q_37==2]<-0
+HOG$q_38[HOG$q_38==2]<-0
+HOG$q_39[HOG$q_39==2]<-0
+HOG$q_40[HOG$q_40==2]<-0
+HOG$BDH<-HOG$q_29+HOG$q_30+HOG$q_31+HOG$q_32+HOG$q_33+HOG$q_34+HOG$q_35+HOG$q_36+HOG$q_37+HOG$q_38+HOG$q_39+HOG$q_40
+summary(HOG$BDH)
+```
+
+```{r}
+#tasa de dependencia
+#se crea la variable individual dependiente
+IND$E015<-ifelse(IND$q_48<=15,1,0)
+IND$E1664<-ifelse(IND$q_48>15&IND$q_48<65,1,0)
+IND$E65<-ifelse(IND$q_48>=65,1,0)
+```
+
+```{r}
+#CANTIDAD DE DEPENDIENTES E INDEPENDIENTES POR HOGAR
+TEMP<-IND%>%group_by(keyhogar)%>%summarise(E015=sum(E015), E1664=sum(E1664), E65=sum(E65))
+HOG<-HOG%>%left_join(TEMP, by="keyhogar")
+```
+
+```{r}
+#RELACION DE DEPENDENCIA
+HOG$RD<-(HOG$E015+HOG$E65)/(HOG$E015+HOG$E1664+HOG$E65)
+summary(HOG$RD)
+```
+
+```{r}
+#participación laboral
+#participación laboral individual
+IND$PL<-ifelse(IND$q_63==1|IND$q_64==1|IND$q_65==1,1,0)
+TEMP<-IND%>%group_by(keyhogar)%>%summarise(PL=sum(PL))
+HOG<-HOG%>%left_join(TEMP, by="keyhogar")
+```
+
+```{r}
+#jefatura femenina
+#crear la variable individual jefatura femenina
+#CREAR VARIABLE JEFATURA FEMENINA
+IND$JF<-ifelse(IND$q_46==1&IND$q_50==2,1,0)
+IND$CH<-ifelse((IND$q_46==1&IND$q_49==4)|(IND$q_46==1&IND$q_49==5)|(IND$q_46==1&IND$q_49==6),1,0)
+#CREAR VARIABLE JEFATURA FEMENINA CABEZA DE HOGAR
+IND$JFCH<-ifelse(IND$JF==1&IND$CH==1,1,0)
+TEMP<-IND %>% group_by(keyhogar) %>% summarise(JFCH=sum(JFCH))
+HOG<-HOG%>%left_join(TEMP, by="keyhogar")
+```
+```{r}
+HOG$q_6[is.na(HOG$q_6)]<-0 #remplazar los NA por ceros
+```
+***REGRESIONES*** 
+HOGARES Selección de datos y especificación del diseño de la encuesta. Definir el diseño de la encuesta
+```{r}
+# hay que especificar las variables de estratos, conglomerados y pesos
+#crear tres objetos distintos: el que contiene el diseño correcto (disc), el que sólo utiliza pesos pero no diseño complejo (disw), y, por último, el que trata los datos como si fuesen un muestro aleatorio, sin utilizar pesos (disram).
+#diseño correcto
+disc<-svydesign(ids=~q_3, strata=~q_6, weights=~ExpPoblacional, data=HOG, nest=TRUE)
+#solo pesos
+disw=svydesign(ids=~1,strata=NULL,weights=~ExpPoblacional, data=HOG)
+#diseño sin pesos
+disram=svydesign(ids=~1,strata=NULL,weights=NULL,data=HOG)
+```
+Calculo de los errores estandar
+
+```{r}
+svymean(~THOG, disc)
+svymean(~THOG, disw)
+svymean(~THOG, disram)
+```
+```{r}
+SE_disc<-svymean(~THOG, disc)%>%SE()
+SE_disw<-svymean(~THOG, disw)%>%SE()
+SE_disram<-svymean(~THOG, disram)%>%SE()
+
+```
+```{r}
+#calcular la varianza y el efecto de del diseño
+tribble(~Método,~SE,
+        "Encuesta Compleja",SE_disc,
+        "Con pesos",SE_disw,
+        "Sin pesos",SE_disram) %>% 
+  mutate(var=SE^2, deff=0.03211968/var)#,%>% kable(digits=6) preguntar
+```
+```{r}
+#para la media
+m1<-svymean(~THOG,disc,deff="replace")
+m2<-svymean(~THOG,disw,deff="replace")
+m3<-svymean(~THOG,disram,deff="replace")
+m1
+m2
+m3
+```
+```{r}
+confint(m1)
+confint(m2)
+confint(m3)
+```
+```{r}
+mod11 = svyglm(THOG~SPV,design=disc)
+summary(mod11)
+AIC(mod11)
+mod12 = svyglm(THOG~BDH,design=disc)
+summary(mod12)
+AIC(mod12)
+mod13 = svyglm(THOG~RD,design=disc)
+summary(mod13)
+AIC(mod13)
+mod14 = svyglm(THOG~as.factor(JFCH),design=disc)
+summary(mod14)
+AIC(mod14)
+```
+```{r}
+mod2 = svyglm(THOG~as.factor(JFCH)+SPV,design=disc)
+summary(mod2)
+AIC(mod2)
+```
+```{r}
+mod3 = svyglm(THOG~as.factor(JFCH)+SPV+BDH,design=disc)
+summary(mod3)
+AIC(mod3)
+```
+```{r}
+mod4 = svyglm(THOG~as.factor(JFCH)+SPV+BDH+RD,design=disc)
+summary(mod4)
+AIC(mod4)
+```
+```{r}
+tab_model(mod4,show.reflvl=TRUE,show.aic=TRUE,show.aicc=TRUE)
+```
+```{r}
+HOG$RD[is.na(HOG$RD)]<-0
+data<-data.frame(HOG$SPV, HOG$BDH,HOG$RD, HOG$THOG)
+cov(data)
+library(psych)
+pairs.panels(data, method = "spearman", density = FALSE, ellipses=FALSE, smooth = FALSE)
+```
+```{r}
+#matriz de correlación
+cor.test(HOG$THOG, HOG$RD)
+cor.test(HOG$THOG, HOG$SPV)
+cor.test(HOG$THOG, HOG$BDH)
+cor.test(HOG$RD,HOG$SPV )
+cor.test(HOG$RD,HOG$BDH)
+cor.test(HOG$BDH,HOG$SPV )
+```
+
+```{r}
+#test de normalidad
+shapiro.test(HOG$THOG)
+shapiro.test(HOG$SPV)
+shapiro.test(HOG$BDH)
+shapiro.test(HOG$RD)
+```
+```{r}
+library(car)
+#FACTOR DE INFLACION DE LA VARIANZA
+car::vif(mod4)
+```
+```{r}
+shapiro.test(HOG$THOG)
+shapiro.test(HOG$RD)
+shapiro.test(HOG$SPV)
+shapiro.test(HOG$BDH)
+```
+
+
+```{r}
+library(ggfortify)
+autoplot(mod4)
+residuales <- mod4$residuals
+qqnorm(residuales)
+qqline(residuales)
+shapiro.test(residuales)
+```
+```{r}
+library(lmtest)
+bptest(mod4)
+# dwtest(mod4) las regresiones con pesos no estan soportadas en el test
+```
+```{r}
+
+#calculo de coeficientes estandarizados
+#install.packages("lm.beta")
+library(lm.beta)
+
+lm.beta(mod4)
+```
+
+
+INDIVIDUOS
+Selección de datos y especificación del diseño de la encuesta. Definir el diseño de la encuesta
+```{r}
+#se deben agregar a la base de datos ndividual las variables de estratos y conglomerados
+IND<-IND%>%left_join(data.frame(keyhogar=HOG$keyhogar,q_3=HOG$q_3,q_6=HOG$q_6),by="keyhogar")
+```
+```{r}
+#completo
+IND$q_6[is.na(IND$q_6)]<-0 #remplazar los NA por ceros
+INDdisc<-svydesign(ids=~q_3, strata=~q_6, weights=~ExpPoblacional, data=IND, nest=TRUE)
+#solo pesos
+INDdisw=svydesign(ids=~1,strata=NULL,weights=~ExpPoblacional, data=IND)
+#aleatorio
+INDdisram=svydesign(ids=~1,strata=NULL,weights=NULL,data=IND)
+```
+Calculo de los errores estandar
+
+```{r}
+svymean(~TIND, INDdisc)
+svymean(~TIND, INDdisw)
+svymean(~TIND, INDdisram)
+```
+```{r}
+SE_disc<-svymean(~TIND, INDdisc)%>%SE()
+SE_disw<-svymean(~TIND, INDdisw)%>%SE()
+SE_disram<-svymean(~TIND, INDdisram)%>%SE()
+
+```
+```{r}
+#calcular la varianza y el efecto de del diseño
+tribble(~Método,~SE,
+        "Encuesta Compleja",SE_disc,
+        "Con pesos",SE_disw,
+        "Sin pesos",SE_disram) %>% 
+  mutate(var=SE^2, deff=0.002013889/var)#,%>% kable(digits=6) preguntar
+```
+```{r}
+#para la media
+m1<-svymean(~TIND,INDdisc,deff="replace")
+m2<-svymean(~TIND,INDdisw,deff="replace")
+m3<-svymean(~TIND,INDdisram,deff="replace")
+m1
+m2
+m3
+```
+```{r}
+confint(m1)
+confint(m2)
+confint(m3)
+```
+
+Regresiones individuales con una sola variable
+```{r}
+model11 = svyglm(TIND~as.factor(q_50),design=INDdisc,na.action = na.omit)
+summary(model11)
+AIC(model11)
+```
+```{r}
+model12 = svyglm(TIND~as.factor(q_56),design=INDdisc,na.action = na.omit)
+summary(model12)
+AIC(model12)
+```
+```{r}
+model13 = svyglm(TIND~as.factor(PL),design=INDdisc,na.action = na.omit)
+summary(model13)
+AIC(model13)
+```
+```{r}
+model14 = svyglm(TIND~q_48,design=INDdisc,na.action = na.omit)
+summary(model14)
+AIC(model14)
+```
+```{r}
+model2 = svyglm(TIND~as.factor(PL)+as.factor(q_56),design=INDdisc,na.action = na.omit)
+summary(model2)
+AIC(model2)
+```
+```{r}
+model3 = svyglm(TIND~as.factor(PL)+as.factor(q_56)+q_48,design=INDdisc,na.action = na.omit)
+summary(model3)
+AIC(model3)
+```
+```{r}
+model4 = svyglm(TIND~as.factor(PL)+as.factor(q_56)+q_48+as.factor(q_50),design=INDdisc,na.action = na.omit)
+summary(model4)
+AIC(model4)
+```
+```{r}
+tab_model(model4,show.reflvl=TRUE,show.aic=TRUE,show.aicc=TRUE)
+```
+
+```{r}
+
+#calculo de coeficientes estandarizados
+library(lm.beta)
+
+lm.beta(model4)
+```
+```{r}
+#matriz de correlación
+cor.test(IND$TIND, IND$q_48)
+```
+```{r}
+library(car)
+#FACTOR DE INFLACION DE LA VARIANZA
+car::vif(model4)
+```
+```{r}
+#test de normalidad
+shapiro.test(IND$TIND)
+shapiro.test(IND$q_48)
+```
+```{r}
+library(ggfortify)
+autoplot(model4)
+residuales <- model4$residuals
+qqnorm(residuales)
+qqline(residuales)
+shapiro.test(residuales)
+```
+```{r}
+library(lmtest)
+bptest(model4)
+```

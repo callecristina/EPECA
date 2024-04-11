@@ -1,0 +1,289 @@
+---
+title: "INDICADORES EPECA"
+author: "Cristina Calle"
+date: "2023-11-23"
+output:
+  html_document: default
+  pdf_document: default
+---
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+Cargar Librerias
+```{r}
+library(tidyverse)
+library(haven)  # Lectura de datos
+library(sjmisc) # Utilidades para encuestas con etiquetas
+library(sjPlot) # Gráficos y tablas "bonitos" con etiquetas
+library(broom)  # Convierte en tibbles los resultados de modelos
+library(survey) # Análisis de encuestas complejas
+library(srvyr) # Funciones survey a la tidyverse
+library(knitr) # Tablas con kable
+library(sandwich)
+library(lmtest) # Varianzas-covarianzas
+library(car)    # Inferencia de modelos
+library (dplyr)
+```
+Abrir las bases de datos
+```{r}
+HOG <- read_sav("C:/Users/yheli/OneDrive - Universidad de Antioquia/BDEPECA/FINAL SPSS/hogaresFinal v.3.sav")
+View(HOG)
+IND <- read_sav("C:/Users/yheli/OneDrive - Universidad de Antioquia/BDEPECA/FINAL SPSS/individuosFinal v.3.sav")
+View(IND)
+```
+
+Indicadores
+
+```{r}
+##TIPO DE VIVIENDA
+prop.table(xtabs(HOG$ExpPoblacional~HOG$q_10))*100
+###HOGARES CON SERVICIOS PÚBLICO
+prop.table(xtabs(HOG$ExpPoblacional~HOG$q_11))*100
+prop.table(xtabs(HOG$ExpPoblacional~HOG$q_12))*100
+prop.table(xtabs(HOG$ExpPoblacional~HOG$q_13))*100
+prop.table(xtabs(HOG$ExpPoblacional~HOG$q_14))*100
+prop.table(xtabs(HOG$ExpPoblacional~HOG$q_15))*100
+prop.table(xtabs(HOG$ExpPoblacional~HOG$q_16))*100
+prop.table(xtabs(HOG$ExpPoblacional~HOG$q_17))*100
+prop.table(xtabs(HOG$ExpPoblacional~HOG$q_18))*100
+prop.table(xtabs(HOG$ExpPoblacional~HOG$q_19))*100
+prop.table(xtabs(HOG$ExpPoblacional~HOG$q_20))*100
+prop.table(xtabs(HOG$ExpPoblacional~HOG$q_21))*100
+##TENENCIA DE LA VIVIENDA
+prop.table(xtabs(HOG$ExpPoblacional~HOG$q_28))*100
+###ACTIVOS
+prop.table(xtabs(HOG$ExpPoblacional~HOG$q_29))*100
+prop.table(xtabs(HOG$ExpPoblacional~HOG$q_30))*100
+prop.table(xtabs(HOG$ExpPoblacional~HOG$q_31))*100
+prop.table(xtabs(HOG$ExpPoblacional~HOG$q_32))*100
+prop.table(xtabs(HOG$ExpPoblacional~HOG$q_33))*100
+prop.table(xtabs(HOG$ExpPoblacional~HOG$q_34))*100
+prop.table(xtabs(HOG$ExpPoblacional~HOG$q_35))*100
+prop.table(xtabs(HOG$ExpPoblacional~HOG$q_36))*100
+prop.table(xtabs(HOG$ExpPoblacional~HOG$q_37))*100
+prop.table(xtabs(HOG$ExpPoblacional~HOG$q_38))*100
+prop.table(xtabs(HOG$ExpPoblacional~HOG$q_39))*100
+prop.table(xtabs(HOG$ExpPoblacional~HOG$q_40))*100
+#HOGARES QUE DEMANDAN TDCR
+prop.table(xtabs(HOG$ExpPoblacional~HOG$q_41))*100
+#HOGARES QUE DEMANDA TDCNR
+prop.table(xtabs(HOG$ExpPoblacional~HOG$q_42))*100
+prop.table(xtabs(HOG$ExpPoblacional~HOG$q_43))*100
+```
+Indicadores con variables auxiliares
+```{r}
+#Demanda TDCNR
+#crear variable DTDNR
+HOG$DTDNR<-ifelse(HOG$q_42==1|HOG$q_43==1|HOG$q_43==2|HOG$q_43==3,1,0)
+prop.table(xtabs(HOG$ExpPoblacional~HOG$DTDNR))*100
+#EXPORTAR LA VARIABLE
+TEMP<-data.frame(HOG$keyhogar,HOG$DTDNR)
+write.csv(TEMP,"TEMP.csv")
+```
+```{r}
+#CREAR VARIABLE JEFATURA FEMENINA
+IND$JF<-ifelse(IND$q_46==1&IND$q_50==2,1,0)
+#CREAR VARIABLE CABEZA DE HOGAR
+IND$CH<-ifelse((IND$q_46==1&IND$q_49==4)|(IND$q_46==1&IND$q_49==5)|(IND$q_46==1&IND$q_49==6),1,0)
+#CREAR VARIABLE JEFATURA FEMENINA CABEZA DE HOGAR
+IND$JFCH<-ifelse(IND$JF==1&IND$CH==1,1,0)
+#agruparla por hogar
+TEMP<-IND %>% group_by(keyhogar) %>% summarise(JFCH=sum(JFCH))
+#merge
+MERG<-merge(HOG, TEMP, by = intersect(names(HOG), names(TEMP)), ALL=TRUE)
+TEMP<-data.frame(MERG$keyhogar,MERG$JFCH, MERG$ExpPoblacional)
+#indicador Hogares con JFCH
+prop.table(xtabs(TEMP$MERG.ExpPoblacional~TEMP$MERG.JFCH))*100
+prop.table(xtabs(MERG$ExpPoblacional~MERG$JFCH))*100
+#exportar
+write.csv(TEMP,"TEMP.csv")
+```
+
+
+```{r}
+#Personas que se dedican principalmente a oficios del hogar
+#se debe crear la variable > 15 años presentes
+IND$M15P<-ifelse(IND$q_48>=15 & IND$q_45==1,1,0)
+xtabs(IND$ExpPoblacional~IND$M15P)
+#porcentaje de mayores de 15 años presentes
+prop.table(xtabs(IND$ExpPoblacional~IND$M15P))
+#proporcion de la población total
+xtabs(IND$ExpPoblacional~IND$q_63)
+prop.table(xtabs(IND$ExpPoblacional~IND$q_63))*100
+#proporción por sexo
+prop.table(xtabs(IND$ExpPoblacional~IND$q_63+IND$q_50))
+#proporción por filas
+prop.table(xtabs(IND$ExpPoblacional~IND$q_63+IND$q_50),1)
+```
+
+```{r}
+#se crea la variable (RF) persona que desea buscar trabajo o montar un negocio pero no puede por responsabilidad familiar
+IND$RF<-ifelse(IND$q_68==3|IND$q_69==7,1)
+IND$RF[is.na(IND$RF)]<-0
+#cantidad de individuos
+xtabs(IND$ExpPoblacional~IND$RF)
+#proporción en la población total
+prop.table(xtabs(IND$ExpPoblacional~IND$RF))*100
+#Se cruza con el género
+xtabs(IND$ExpPoblacional~IND$RF+IND$q_50)
+#proporción por género por filas
+prop.table(xtabs(IND$ExpPoblacional~IND$RF+IND$q_50),1)*100
+#proporción en los >15 presentes
+xtabs(IND$ExpPoblacional~IND$RF)[2]/xtabs(IND$ExpPoblacional~IND$M15P)[2]*100
+#por genero mujeres
+xtabs(IND$ExpPoblacional~IND$RF+IND$q_50)[4]/xtabs(IND$ExpPoblacional~IND$M15P+IND$q_50)[4]*100
+#por genero hombres
+xtabs(IND$ExpPoblacional~IND$RF+IND$q_50)[2]/xtabs(IND$ExpPoblacional~IND$M15P+IND$q_50)[2]*100
+
+```
+```{r}
+#proporcion de personas que no buscan trabajo o inician negocio por las responsabilidades familiares con respecto a la número de personas que desean buscar un trabajo o iniciar un negocio
+#mujeres
+xtabs(IND$ExpPoblacional~IND$RF+IND$q_50)[4]/(xtabs(IND$ExpPoblacional~IND$q_67+IND$q_50)[1,2]+xtabs(IND$ExpPoblacional~IND$q_67+IND$q_50)[2,2])*100
+#hombres
+xtabs(IND$ExpPoblacional~IND$RF+IND$q_50)[2]/(xtabs(IND$ExpPoblacional~IND$q_67+IND$q_50)[1,1]+xtabs(IND$ExpPoblacional~IND$q_67+IND$q_50)[2,1])*100
+
+```
+
+```{r}
+#Se crea la variable contribución en TDCNR
+IND$TDCNR<-ifelse(IND$Actividad5!=0|IND$Actividad31!=0|IND$Actividad32!=0|IND$Actividad33!=0|IND$Actividad34!=0|IND$Actividad35!=0|IND$Actividad36!=0|IND$Actividad37!=0|IND$Actividad41!=0|IND$Actividad42!=0|IND$Actividad43!=0|IND$Actividad44!=0,1,0)
+#Contribución total
+xtabs(IND$ExpPoblacional~IND$TDCNR)
+prop.table(xtabs(IND$ExpPoblacional~IND$TDCNR))
+##### contribución por genero
+prop.table(xtabs(IND$ExpPoblacional~IND$TDCNR+IND$q_50))
+prop.table(xtabs(IND$ExpPoblacional~IND$TDCNR+IND$q_50),1)*100
+```
+```{r}
+#crear una variable hombre participante
+IND$GP<-ifelse(IND$q_50==1&IND$TDCNR==1,1,ifelse(IND$q_50==2&IND$TDCNR==1,2,0))
+
+```
+
+```{r}
+#participacion femenina 
+#crear la varibal mayor de de 15
+IND$M15<-ifelse(IND$q_48>15,1,0)
+xtabs(IND$ExpPoblacional~IND$TDCNR+IND$q_50)
+xtabs(IND$ExpPoblacional~IND$M15+IND$q_50)
+#participación total
+xtabs(IND$ExpPoblacional~IND$TDCNR)[2]/xtabs(IND$ExpPoblacional~IND$M15)[2]
+#participación femenina
+xtabs(IND$ExpPoblacional~IND$TDCNR+IND$q_50)[4]/xtabs(IND$ExpPoblacional~IND$M15+IND$q_50)[4]*100
+#Participación masculina 
+xtabs(IND$ExpPoblacional~IND$TDCNR+IND$q_50)[2]/xtabs(IND$ExpPoblacional~IND$M15+IND$q_50)[2]*100
+```
+
+```{r}
+#Se crea la variable total tiempo TDCNR por individuo
+IND$STDCNR<-IND$Actividad5+IND$Actividad31+IND$Actividad32+IND$Actividad33+IND$Actividad34+IND$Actividad35+IND$Actividad36+IND$Actividad37+IND$Actividad41+IND$Actividad42+IND$Actividad43+IND$Actividad44
+summary(IND$STDCNR)
+#sumar las horas totales
+df<-data.frame(xtabs(IND$ExpPoblacional~IND$STDCNR))
+df$IND.STDCNR<-as.numeric(df$IND.STDCNR)
+df$horas<-df$IND.STDCNR*df$Freq
+#exportar
+TEMP<-df
+write.csv(TEMP,"TEMP.csv")
+#la suma total de horas
+HORAS<-sum(df$horas)
+#PROMEDIO SOBRE LOS PARTICIPANTES
+HORAS/xtabs(IND$ExpPoblacional~IND$TDCNR)[2]
+#PROMEDIO SOBRE LOS MAYORES DE 15
+HORAS/xtabs(IND$ExpPoblacional~IND$M15)[2]
+#por genero
+df2<-data.frame(xtabs(IND$ExpPoblacional~IND$STDCNR+IND$q_50))
+df2$horas<-df$IND.STDCNR*df2$Freq
+#exportar
+TEMP<-df2
+write.csv(TEMP,"TEMP.csv")
+#AGREGAR LAS HORAS POR GÉNERO
+HORAS2<-data.frame(aggregate(df2$horas, list(df2$IND.q_50), sum))
+#promedio masculino mayores de 15
+HORAS2[1,2]/xtabs(IND$ExpPoblacional~IND$M15+IND$q_50)[2]
+#promedio FEMENINO mayores de 15
+HORAS2[2,2]/xtabs(IND$ExpPoblacional~IND$M15+IND$q_50)[4]
+#Promedio global
+HORAS/sum(xtabs(IND$ExpPoblacional~IND$TDCNR))
+#Tiempo promedio entre mujeres totales
+HORAS2[2,2]/xtabs(IND$ExpPoblacional~IND$q_50)[2]
+#tiempo promedio entre hombres totales
+HORAS2[1,2]/xtabs(IND$ExpPoblacional~IND$q_50)[1]
+```
+```{r}
+#Se crea la variable cuidao directo
+IND$DIRECTO<-IND$Actividad41+IND$Actividad42+IND$Actividad43+IND$Actividad44
+summary(IND$DIRECTO)
+#CRREAR LA VARIABLE HORAS
+df<-data.frame(xtabs(IND$ExpPoblacional~IND$DIRECTO))
+df$IND.DIRECTO<-as.numeric(df$IND.DIRECTO)
+df$horas<-df$IND.DIRECTO*df$Freq
+#SUMAR LAS HORAS
+#la suma total de horas
+HORAS<-sum(df$horas)
+#PROMEDIO SOBRE LOS MAYORES DE 15 AÑOS
+HORAS/xtabs(IND$ExpPoblacional~IND$M15)[2]
+#por genero
+df2<-data.frame(xtabs(IND$ExpPoblacional~IND$DIRECTO+IND$q_50))
+df2$horas<-df$IND.DIRECTO*df2$Freq
+#agregar las horas por genero
+HORAS2<-data.frame(aggregate(df2$horas, list(df2$IND.q_50), sum))
+#promedio masculino mayores de 15
+HORAS2[1,2]/xtabs(IND$ExpPoblacional~IND$M15+IND$q_50)[2]
+#promedio FEMENINO mayores de 15
+HORAS2[2,2]/xtabs(IND$ExpPoblacional~IND$M15+IND$q_50)[4]
+```
+Percepción de cuidado
+```{r}
+#proporciónde personas que reportan estar a cargo del cuidado directo de alguién
+#CANTIDAD DE PERSONAS
+xtabs(IND$ExpPoblacional~IND$q_59)
+#Porcentaje total
+prop.table(xtabs(IND$ExpPoblacional~IND$q_59))*100
+#porcentaje por género
+prop.table(xtabs(IND$ExpPoblacional~IND$q_59+IND$q_50))*100
+prop.table(xtabs(IND$ExpPoblacional~IND$q_59+IND$q_50),1)*100
+```
+Tiempo promedio de cuidado directo reportado
+```{r}
+#promedio simple 
+summary(IND$q_60)
+#conteo de horas
+df<-data.frame(xtabs(IND$ExpPoblacional~IND$q_60))
+df$IND.q_60<-as.numeric(df$IND.q_60)
+df$horas<-df$IND.q_60*df$Freq
+#horas total
+HORAS<-sum(df$horas)
+#promedio ambos sexos
+HORAS/sum(xtabs(IND$ExpPoblacional~IND$q_60))
+#horas por sexo
+df2<-data.frame(xtabs(IND$ExpPoblacional~IND$q_60+IND$q_50))
+df2$IND.q_60<-as.numeric(df$IND.q_60)
+df2$horas<-df2$IND.q_60*df2$Freq
+HORAS2<-data.frame(aggregate(df2$horas, list(df2$IND.q_50), sum))
+
+
+```
+Percepción de la carga
+```{r}
+xtabs(IND$ExpPoblacional~IND$q_61)
+prop.table(xtabs(IND$ExpPoblacional~IND$q_61))*100
+#por género
+prop.table(xtabs(IND$ExpPoblacional~IND$q_61+IND$q_50),2)*100
+```
+```{r}
+#se crea la variable género de los participantes
+IND$GP<-ifelse(IND$q_50==1&IND$TDCNR==1,1,ifelse(IND$q_50==2&IND$TDCNR==1,2,0))
+#se cruza con nivel educativo 
+ xtabs(IND$ExpPoblacional~IND$GP+IND$q_58)
+#se crea la variable participación laboral 
+IND$PL<-ifelse(IND$q_63==1|IND$q_64==1|IND$q_65==1,1,0)
+#se cruza con género por participación 
+xtabs(IND$ExpPoblacional~IND$GP+IND$PL)
+#se cruza con si asiste
+xtabs(IND$ExpPoblacional~IND$GP+IND$q_56)
+prop.table(xtabs(IND$ExpPoblacional~IND$GP+IND$q_56),2)
+```
+
